@@ -15,6 +15,7 @@ from .config import Settings, cargar_settings
 from .extractor import ExtractorFacturas
 from .pipeline import Pipeline
 from .servicios.drive import DriveClient
+from .servicios.enlaces import DescargadorEnlaces
 from .servicios.gmail import GmailClient
 from .servicios.google_auth import credenciales, servicio
 from .servicios.sheets import SheetsClient, crear_hoja_de_control
@@ -36,6 +37,7 @@ def configurar_logging(settings: Settings) -> None:
     )
     logging.getLogger("googleapiclient").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
 
 
 def _exigir_configuracion(settings: Settings) -> None:
@@ -60,6 +62,7 @@ def construir_pipeline(settings: Settings | None = None, *, dry_run: bool = Fals
         drive=DriveClient(servicio("drive", "v3", creds), settings.drive_root_id),
         sheets=SheetsClient(servicio("sheets", "v4", creds), settings.sheet_id),
         extractor=ExtractorFacturas(settings),
+        descargador=DescargadorEnlaces(),
         dry_run=dry_run,
     )
 

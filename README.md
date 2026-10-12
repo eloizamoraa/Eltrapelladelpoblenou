@@ -8,8 +8,10 @@ incidencia para que lo revise una persona.
 ## Qué hace con cada email
 
 ```
-Gmail ──► ¿trae PDF? ──► ¿PDF válido? ──► Claude lee los datos ──► validación ──► ¿duplicado?
-              │no             │no                                      │                │
+Gmail ──► ¿trae PDF,  ──► ¿PDF válido? ──► Claude lee los datos ──► validación ──► ¿duplicado?
+          adjunto o en        │no                                      │                │
+          un enlace?          │                                        │                │
+              │no             │                                        │                │
               ▼               ▼                                        ▼                ▼
           incidencia      incidencia                          OK  o  REVISAR        DUPLICADO
 ```
@@ -24,6 +26,13 @@ Gmail ──► ¿trae PDF? ──► ¿PDF válido? ──► Claude lee los da
 En Gmail, cada email tratado recibe la etiqueta `facturas-procesada`, y además
 `facturas-incidencia` si algo quedó pendiente. Si falla la red o una API, el email no se
 etiqueta y se reintenta en la siguiente pasada.
+
+**Facturas en un enlace.** Si el email no trae ningún PDF adjunto, se abren los enlaces del
+mensaje que parecen llevar a una factura (por su texto o su dirección: "Descargar factura",
+`.../invoice/123`, `...pdf`; como mucho 5 por email) y los que devuelven un PDF se tratan
+igual que un adjunto. Nunca se abren enlaces de baja ni direcciones de la red local. Si
+ningún enlace da un PDF, la incidencia *Email sin PDF adjunto* dice qué enlaces se probaron
+y por qué fallaron; si fue un fallo pasajero, basta con `trapella-facturas reprocesar`.
 
 **El importe se considera fiable** solo si se lee el total y además cuadra con el desglose
 (bases + cuotas de IVA + recargo − IRPF, con 2 céntimos de margen) y cada cuota corresponde
@@ -135,7 +144,7 @@ src/trapella_facturas/
 ├── esquema.py        Pestañas y columnas de la hoja
 ├── models.py         Tipos de datos
 ├── config.py         Lectura del .env
-└── servicios/        Clientes de Gmail, Drive, Sheets y OAuth de Google
+└── servicios/        Clientes de Gmail, Drive, Sheets y OAuth de Google; descarga de enlaces
 tests/                Pruebas con dobles en memoria (no tocan Google ni Claude)
 ```
 
@@ -143,8 +152,10 @@ Pruebas: `.\.venv\Scripts\python -m pytest`
 
 ## Límites actuales
 
-- Solo se tratan facturas en **PDF adjunto**. Un email con enlace de descarga o con la
-  factura en foto (JPG) queda como incidencia *Email sin PDF adjunto*.
+- Solo se tratan facturas en **PDF**, adjunto o en un enlace de descarga directa. Una
+  factura en foto (JPG), o un enlace que pide iniciar sesión o lleva a una página (portal
+  del proveedor, Google Drive, Dropbox, WeTransfer), queda como incidencia *Email sin PDF
+  adjunto*.
 - La comprobación de correo es periódica (cada 10 minutos por defecto), no instantánea.
 - Cada PDF leído es una llamada de pago a la API de Claude.
 - `credentials.json`, `token.json` y `.env` dan acceso al buzón y a la clave de la API:

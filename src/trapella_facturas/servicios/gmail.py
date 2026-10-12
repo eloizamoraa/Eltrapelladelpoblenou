@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
-from pathlib import PurePath
 
 from ..config import ETIQUETA_INCIDENCIA, ETIQUETA_PROCESADA
-from ..models import Adjunto, Email
+from ..models import Adjunto, Email, nombres_unicos
+from .enlaces import extraer_enlaces
 
 
 class GmailClient:
@@ -54,7 +54,10 @@ class GmailClient:
             fecha=datetime.fromtimestamp(int(msg["internalDate"]) / 1000),
         )
         self._recoger_adjuntos(id_mensaje, msg["payload"], email.adjuntos)
-        _nombres_unicos(email.adjuntos)
+        nombres_unicos(email.adjuntos)
+        email.enlaces = extraer_enlaces(
+            _cuerpo(msg["payload"], "text/html"), _cuerpo(msg["payload"], "text/plain")
+        )
         return email
 
     def _recoger_adjuntos(self, id_mensaje: str, parte: dict, destino: list[Adjunto]) -> None:
@@ -92,11 +95,10 @@ class GmailClient:
         ).execute()
 
 
-def _nombres_unicos(adjuntos: list[Adjunto]) -> None:
-    """Dos adjuntos con el mismo nombre en un email se distinguen con ' (2)', ' (3)'..."""
-    vistos: dict[str, int] = {}
-    for adjunto in adjuntos:
-        n = vistos[adjunto.nombre] = vistos.get(adjunto.nombre, 0) + 1
-        if n > 1:
-            ruta = PurePath(adjunto.nombre)
-            adjunto.nombre = f"{ruta.stem} ({n}){ruta.suffix}"
+def _cuerpo(parte: dict, mime: str) -> str:
+    """Texto de las partes del mensaje de ese tipo que no son adjuntos."""
+    texto = "".join(_cuerpo(sub, mime) for sub in parte.get("parts", []))
+    datos = parte.get("body", {}).get("data")
+    if datos and parte.get("mimeType") == mime and not parte.get("filename"):
+        texto += base64.urlsafe_b64decode(datos).decode("utf-8", errors="replace") + "\n"
+    return texto

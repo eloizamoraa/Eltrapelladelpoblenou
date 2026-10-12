@@ -5,11 +5,10 @@ import pytest
 from conftest import factura, pdf_valido
 
 from trapella_facturas.duplicados import buscar_duplicado
-from trapella_facturas.models import Adjunto, LineaIVA, Proveedor
+from trapella_facturas.models import Adjunto, LineaIVA, Proveedor, nombres_unicos
 from trapella_facturas.nombres import carpeta_factura, nombre_factura, nombre_pendiente
 from trapella_facturas.normalizacion import a_fecha, norm_cif, norm_nombre, norm_numero
 from trapella_facturas.pdf import comprobar_pdf
-from trapella_facturas.servicios.gmail import _nombres_unicos
 from trapella_facturas.servicios.sheets import _celda, _letra
 from trapella_facturas.validacion import comprobar_importes, reconocer_proveedor
 
@@ -94,5 +93,5 @@ def test_celdas_de_la_hoja():
 
 def test_adjuntos_con_el_mismo_nombre():
     adjuntos = [Adjunto("factura.pdf", "application/pdf", b"") for _ in range(3)]
-    _nombres_unicos(adjuntos)
+    nombres_unicos(adjuntos)
     assert [a.nombre for a in adjuntos] == ["factura.pdf", "factura (2).pdf", "factura (3).pdf"]

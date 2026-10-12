@@ -69,11 +69,12 @@ def fila_factura(
 class Pipeline:
     """Orquesta el procesado. Recibe los clientes ya construidos (ver app.py)."""
 
-    def __init__(self, *, gmail, drive, sheets, extractor, dry_run: bool = False):
+    def __init__(self, *, gmail, drive, sheets, extractor, descargador=None, dry_run: bool = False):
         self.gmail = gmail
         self.drive = drive
         self.sheets = sheets
         self.extractor = extractor
+        self.descargador = descargador
         self.dry_run = dry_run
         self.proveedores: list[Proveedor] = []
         self.filas: list[dict] = []
@@ -119,15 +120,23 @@ class Pipeline:
     def procesar_email(self, id_mensaje: str) -> list[Resultado]:
         email = self.gmail.leer_mensaje(id_mensaje)
         pdfs = [a for a in email.adjuntos if a.es_pdf]
+        enlaces_fallidos: list[str] = []
+        if not pdfs and self.descargador:
+            # sin PDF adjunto: puede que la factura esté en un enlace de descarga
+            pdfs, enlaces_fallidos = self.descargador.descargar(email.enlaces)
         if pdfs:
             resultados = [self._procesar_adjunto(email, adjunto) for adjunto in pdfs]
+            sin_pdf = (email.id, "")
+            if sin_pdf in self.pendientes and not self.dry_run:
+                # antes el enlace falló y ahora no: esa incidencia ya no aplica
+                self.sheets.resolver_incidencias(*sin_pdf)
+                self.pendientes.discard(sin_pdf)
         else:
             recibidos = ", ".join(a.nombre for a in email.adjuntos) or "ninguno"
-            resultados = [
-                self._solo_incidencia(
-                    email, None, Incidencia.SIN_ADJUNTO_PDF, f"Adjuntos recibidos: {recibidos}."
-                )
-            ]
+            detalle = f"Adjuntos recibidos: {recibidos}."
+            if enlaces_fallidos:
+                detalle += f" Enlaces probados sin éxito: {'; '.join(enlaces_fallidos)}."
+            resultados = [self._solo_incidencia(email, None, Incidencia.SIN_ADJUNTO_PDF, detalle)]
         for r in resultados:
             log.info("%s | %s | %s %s", email.asunto, r.adjunto or "-", r.estado.value, r.detalle)
         if not self.dry_run:

@@ -5,12 +5,14 @@ from __future__ import annotations
 import io
 from datetime import datetime
 
+import httpx2 as httpx
 import pytest
 from pypdf import PdfWriter
 
 from trapella_facturas.esquema import FILA, INCIDENCIA_PENDIENTE, INCIDENCIA_RESUELTA
-from trapella_facturas.models import Adjunto, DatosFactura, Email, LineaIVA, Proveedor
+from trapella_facturas.models import Adjunto, DatosFactura, Email, Enlace, LineaIVA, Proveedor
 from trapella_facturas.pipeline import Pipeline
+from trapella_facturas.servicios.enlaces import DescargadorEnlaces
 
 
 def pdf_valido(marca: str = "") -> bytes:
@@ -146,17 +148,45 @@ class ExtractorFalso:
         return lectura
 
 
+def descargador(web: dict[str, httpx.Response], ip: str = "93.184.216.34") -> DescargadorEnlaces:
+    """Descargador real sobre un internet de mentira; todo dominio resuelve a `ip`."""
+
+    def responder(peticion: httpx.Request) -> httpx.Response:
+        guardada = web.get(str(peticion.url))
+        if guardada is None:
+            return httpx.Response(404)
+        return httpx.Response(guardada.status_code, headers=guardada.headers, content=guardada.content)
+
+    return DescargadorEnlaces(
+        transport=httpx.MockTransport(responder), resolver=lambda host, puerto: [(0, 0, 0, "", (ip, 0))]
+    )
+
+
 class Entorno:
     def __init__(self):
         self.gmail = GmailFalso()
         self.drive = DriveFalso()
         self.sheets = SheetsFalso([Proveedor("Makro", "A28647451", ("Makro Autoservicio Mayorista",))])
         self.extractor = ExtractorFalso()
+        self.web: dict[str, httpx.Response] = {}  # url -> lo que responde internet
 
     def pipeline(self, **opciones) -> Pipeline:
         return Pipeline(
-            gmail=self.gmail, drive=self.drive, sheets=self.sheets, extractor=self.extractor, **opciones
+            gmail=self.gmail,
+            drive=self.drive,
+            sheets=self.sheets,
+            extractor=self.extractor,
+            descargador=descargador(self.web),
+            **opciones,
         )
+
+    def llega_enlace(self, id_mensaje: str, lectura, url: str, texto: str = "Descargar factura") -> None:
+        """Simula un email sin adjuntos con un enlace a un PDF cuya lectura será `lectura`."""
+        pdf = pdf_valido(id_mensaje + url)
+        self.extractor.lecturas[pdf] = lectura
+        self.web[url] = httpx.Response(200, content=pdf, headers={"content-type": "application/pdf"})
+        self.gmail.anadir(id_mensaje)
+        self.gmail.emails[id_mensaje].enlaces.append(Enlace(url, texto))
 
     def llega(self, id_mensaje: str, lectura, nombre: str = "factura.pdf") -> None:
         """Simula un email con un PDF cuya lectura será `lectura`."""

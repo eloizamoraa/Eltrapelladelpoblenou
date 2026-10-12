@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from pathlib import PurePath
 
 from pydantic import BaseModel, Field
 
@@ -76,6 +77,22 @@ class Adjunto:
         return self.mime == "application/pdf" or self.nombre.lower().endswith(".pdf")
 
 
+def nombres_unicos(adjuntos: list[Adjunto]) -> None:
+    """Dos adjuntos con el mismo nombre en un email se distinguen con ' (2)', ' (3)'..."""
+    vistos: dict[str, int] = {}
+    for adjunto in adjuntos:
+        n = vistos[adjunto.nombre] = vistos.get(adjunto.nombre, 0) + 1
+        if n > 1:
+            ruta = PurePath(adjunto.nombre)
+            adjunto.nombre = f"{ruta.stem} ({n}){ruta.suffix}"
+
+
+@dataclass(frozen=True)
+class Enlace:
+    url: str
+    texto: str = ""  # lo que se lee en el email: "Descargar factura"
+
+
 @dataclass
 class Email:
     id: str
@@ -83,6 +100,7 @@ class Email:
     asunto: str
     fecha: datetime
     adjuntos: list[Adjunto] = field(default_factory=list)
+    enlaces: list[Enlace] = field(default_factory=list)
 
     @property
     def enlace(self) -> str:

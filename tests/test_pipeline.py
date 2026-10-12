@@ -1,7 +1,7 @@
 from conftest import factura
 
 from trapella_facturas.extractor import ErrorExtraccion
-from trapella_facturas.models import Adjunto, Incidencia, LineaIVA, Proveedor
+from trapella_facturas.models import Adjunto, Enlace, Incidencia, LineaIVA, Proveedor
 
 
 def estados(resumen):
@@ -158,3 +158,41 @@ def test_varios_pdf_en_un_email(entorno):
 
     assert estados(entorno.pipeline().ejecutar()) == ["OK", "OK"]
     assert len(entorno.sheets.facturas()) == 2
+
+
+def test_factura_en_un_enlace_de_descarga(entorno):
+    entorno.llega_enlace("m1", factura(), "https://portal.example.com/d/abc123")
+    resumen = entorno.pipeline().ejecutar()
+
+    assert estados(resumen) == ["OK"]
+    assert entorno.drive.rutas == ["2026/10-Octubre/Makro/2026-10-03_Makro_FA-2026-0158_170.50.pdf"]
+    (fila,) = entorno.sheets.facturas()
+    assert fila["Adjunto original"] == "abc123.pdf"
+    assert entorno.gmail.etiquetas["m1"] == {"procesada"}
+
+
+def test_con_pdf_adjunto_no_se_abren_los_enlaces(entorno):
+    entorno.llega_enlace("m1", factura(numero_factura="OTRA"), "https://portal.example.com/factura.pdf")
+    entorno.llega("m1", factura())
+    entorno.gmail.emails["m1"].enlaces.append(Enlace("https://portal.example.com/factura.pdf", ""))
+
+    assert estados(entorno.pipeline().ejecutar()) == ["OK"]
+    assert entorno.sheets.facturas()[0]["Nº factura"] == "FA-2026/0158"
+
+
+def test_enlace_que_falla_queda_como_incidencia_y_se_resuelve_al_reprocesar(entorno):
+    url = "https://portal.example.com/factura/77"
+    entorno.llega_enlace("m1", factura(), url)
+    pdf = entorno.web.pop(url)
+    resumen = entorno.pipeline().ejecutar()
+
+    assert resumen["resultados"][0]["incidencias"] == [Incidencia.SIN_ADJUNTO_PDF]
+    assert "responde 404" in resumen["resultados"][0]["detalle"]
+    assert entorno.gmail.etiquetas["m1"] == {"procesada", "incidencia"}
+
+    entorno.web[url] = pdf
+    (resultado,) = entorno.pipeline().reprocesar("m1")
+
+    assert resultado.estado == "OK"
+    assert entorno.sheets.incidencias()[0]["Estado"] == "Resuelta"
+    assert entorno.gmail.etiquetas["m1"] == {"procesada"}
