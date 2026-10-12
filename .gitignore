@@ -1,0 +1,10 @@
+# Secretos: nunca al repositorio
+.env
+credentials.json
+token.json
+
+.venv/
+logs/
+__pycache__/
+*.egg-info/
+.pytest_cache/

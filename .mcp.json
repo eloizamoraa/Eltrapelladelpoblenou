@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "trapella-facturas": {
+      "command": ".venv/Scripts/trapella-facturas-mcp.exe",
+      "args": []
+    }
+  }
+}
